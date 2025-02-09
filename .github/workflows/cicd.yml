@@ -47,19 +47,14 @@ jobs:
         run: |
           oc start-build flask-app --from-dir=. --follow
 
-      # 6. Deploy (or update) the application in OpenShift.
+      # 6. Deploy (or update) the application in OpenShift using the YAML files.
       - name: Deploy to OpenShift
         run: |
-          # If a DeploymentConfig already exists, trigger a rollout.
-          if oc get dc flask-app > /dev/null 2>&1; then
-            echo "DeploymentConfig 'flask-app' exists. Triggering a new rollout..."
-            oc rollout latest dc/flask-app
-          else
-            echo "Creating a new application from the built image..."
-            oc new-app flask-app --name=flask-app
-          fi
-
-          # Expose the service by creating a route if it does not already exist.
+          # Apply the Deployment and Service manifests stored in the 'deployments' folder.
+          oc apply -f deployments/flask-app-deployment.yaml
+          oc apply -f deployments/flask-app-service.yaml
+          
+          # Optionally, expose the Service via a Route if it does not already exist.
           if oc get route flask-app > /dev/null 2>&1; then
             echo "Route for 'flask-app' already exists."
           else
