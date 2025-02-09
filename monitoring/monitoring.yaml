@@ -1,10 +1,14 @@
+# -----------------------------------------------------------
+# 1. Prometheus Custom Resource for your application
+# -----------------------------------------------------------
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
-  name: openshift-flask-app-prometheus
-  namespace: openshift-flask-app
+  name: one-stop-bank-prometheus
+  namespace: deepakagrawalmsoe-dev
 spec:
   serviceAccountName: prometheus
+  # The selector below tells Prometheus to look for ServiceMonitors with matching labels.
   serviceMonitorSelector: {}
   resources:
     requests:
@@ -12,35 +16,42 @@ spec:
   storage:
     volumeClaimTemplate:
       spec:
-        accessModes: ["ReadWriteOnce"]
+        accessModes:
+          - ReadWriteOnce
         resources:
           requests:
             storage: 5Gi
 ---
+# -----------------------------------------------------------
+# 2. ServiceMonitor to scrape metrics from your application pods
+# -----------------------------------------------------------
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: openshift-flask-app-servicemonitor
-  namespace: openshift-flask-app
+  name: one-stop-bank-servicemonitor
+  namespace: deepakagrawalmsoe-dev
 spec:
   selector:
     matchLabels:
-      app: openshift-flask-app
+      app: openshift-flask-app  # Ensure your application’s Service/Pods are labeled accordingly
   endpoints:
-    - port: web
+    - port: metrics    # The name of the port exposing Prometheus metrics (e.g. via a /metrics endpoint)
       interval: 10s
 ---
+# -----------------------------------------------------------
+# 3. PrometheusRule for alerting on high CPU/Memory usage
+# -----------------------------------------------------------
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: openshift-flask-app-alerts
-  namespace: openshift-flask-app
+  name: one-stop-bank-alerts
+  namespace: deepakagrawalmsoe-dev
 spec:
   groups:
     - name: resource-alerts
       rules:
         - alert: HighCPUUsage
-          expr: sum(rate(container_cpu_usage_seconds_total{namespace="openshift-flask-app"}[5m])) > 80
+          expr: sum(rate(container_cpu_usage_seconds_total{namespace="one-stop-bank"}[5m])) > 80
           for: 1m
           labels:
             severity: critical
@@ -48,34 +59,69 @@ spec:
             summary: "High CPU usage detected"
             description: "CPU usage exceeded 80% for more than 1 minute."
         - alert: HighMemoryUsage
-          expr: sum(container_memory_usage_bytes{namespace="openshift-flask-app"}) > 8000000000
+          expr: sum(container_memory_usage_bytes{namespace="one-stop-bank"}) > 8000000000
           for: 1m
           labels:
             severity: warning
           annotations:
             summary: "High Memory usage detected"
-            description: "Memory usage exceeded 8GB."
+            description: "Memory usage exceeded 8GB for more than 1 minute."
 ---
-apiVersion: v1
-kind: Service
+# -----------------------------------------------------------
+# 4. CronJob for AI/ML–based anomaly detection
+# -----------------------------------------------------------
+apiVersion: batch/v1
+kind: CronJob
 metadata:
-  name: grafana
-  namespace: openshift-flask-app
-  labels:
-    app: grafana
+  name: anomaly-detection-job
+  namespace: deepakagrawalmsoe-dev
 spec:
-  ports:
-    - name: web
-      port: 3000
-      targetPort: 3000
-  selector:
-    app: grafana
+  schedule: "*/30 * * * *"  # Run every 30 minutes (adjust as needed)
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: anomaly-detector
+              image: python:3.9
+              command: ["python", "-u", "-c"]
+              args:
+                - |
+                  import time
+                  import random
+                  import numpy as np
+
+                  # Simple in-memory storage for recent metrics
+                  data = []
+
+                  def detect_anomaly(metric):
+                      data.append(metric)
+                      if len(data) > 30:
+                          # Consider the last 30 metric values for anomaly detection
+                          arr = np.array(data[-30:])
+                          mean = arr.mean()
+                          std = arr.std() + 1e-5  # avoid division by zero
+                          z_score = (metric - mean) / std
+                          if abs(z_score) > 2.5:
+                              print(f"Anomaly detected: metric={metric:.2f}, z_score={z_score:.2f}")
+
+                  while True:
+                      # Simulate a metric reading (replace with real data if possible)
+                      metric = random.uniform(50, 100)
+                      detect_anomaly(metric)
+                      time.sleep(5)
+          restartPolicy: OnFailure
 ---
+# -----------------------------------------------------------
+# 5. Grafana Deployment for visualization of metrics
+# -----------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
-  namespace: openshift-flask-app
+  namespace: deepakagrawalmsoe-dev
+  labels:
+    app: grafana
 spec:
   replicas: 1
   selector:
@@ -95,136 +141,59 @@ spec:
             - name: GF_SECURITY_ADMIN_PASSWORD
               value: "admin"
 ---
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
+# -----------------------------------------------------------
+# 6. Grafana Service to expose the dashboard
+# -----------------------------------------------------------
+apiVersion: v1
+kind: Service
 metadata:
-  name: openshift-flask-app-hpa
-  namespace: openshift-flask-app
+  name: grafana
+  namespace: deepakagrawalmsoe-dev
+  labels:
+    app: grafana
 spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: openshift-flask-app-app
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
----
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: anomaly-detection-job
-  namespace: openshift-flask-app
-spec:
-  schedule: "*/30 * * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: anomaly-detector
-              image: python:3.9
-              command: ["python", "-u", "-c"]
-              args:
-                - |
-                  import time, random
-                  while True:
-                      metric = random.uniform(50, 100)
-                      if metric > 90:
-                          print("Anomaly detected: High resource usage")
-                      time.sleep(5)
-          restartPolicy: OnFailure
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: fluentd
-  namespace: logging
-spec:
+  ports:
+    - name: web
+      port: 3000
+      targetPort: 3000
   selector:
-    matchLabels:
-      app: fluentd
-  template:
-    metadata:
-      labels:
-        app: fluentd
-    spec:
-      containers:
-        - name: fluentd
-          image: fluent/fluentd-kubernetes-daemonset:v1.14
-          volumeMounts:
-            - name: varlog
-              mountPath: /var/log
-      volumes:
-        - name: varlog
-          hostPath:
-            path: /var/log
+    app: grafana
 ---
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: predictive-scaling-job
-  namespace: openshift-flask-app
-spec:
-  schedule: "*/15 * * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: predictive-scaler
-              image: python:3.9
-              command: ["python", "-u", "-c"]
-              args:
-                - |
-                  import time, random
-                  while True:
-                      predicted_load = random.uniform(50, 100)
-                      print(f"Predicted load: {predicted_load}%")
-                      if predicted_load > 85:
-                          print("Scaling up resources...")
-                      elif predicted_load < 40:
-                          print("Scaling down resources...")
-                      time.sleep(5)
-          restartPolicy: OnFailure
----
+# -----------------------------------------------------------
+# 7. ConfigMap containing the Grafana Dashboard configuration
+# -----------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboard-config
-  namespace: openshift-flask-app
+  namespace: deepakagrawalmsoe-dev
   labels:
     grafana_dashboard: "1"
 data:
   dashboard.json: |
     {
       "dashboard": {
-        "title": "openshift-flask-app Monitoring",
+        "title": "OneStopBank Monitoring",
         "panels": [
           {
             "type": "graph",
             "title": "CPU Usage",
             "targets": [
-              { "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"openshift-flask-app\"}[5m]))", "legendFormat": "CPU" }
+              { "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"one-stop-bank\"}[5m]))", "legendFormat": "CPU" }
             ]
           },
           {
             "type": "graph",
             "title": "Memory Usage",
             "targets": [
-              { "expr": "sum(container_memory_usage_bytes{namespace=\"openshift-flask-app\"})", "legendFormat": "Memory" }
+              { "expr": "sum(container_memory_usage_bytes{namespace=\"one-stop-bank\"})", "legendFormat": "Memory" }
             ]
           },
           {
             "type": "table",
-            "title": "Anomalies Detected",
+            "title": "Anomaly Logs",
             "targets": [
-              { "expr": "count_over_time(logs{namespace=\"monitoring\"}[1h])", "legendFormat": "Anomalies" }
+              { "expr": "count_over_time({namespace=\"one-stop-bank\"}[1h])", "legendFormat": "Anomalies" }
             ]
           }
         ]
