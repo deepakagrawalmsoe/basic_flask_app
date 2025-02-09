@@ -1,0 +1,67 @@
+name: Deploy Flask App to OpenShift (Internal Build)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout your repository code.
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Install the OpenShift CLI (oc).
+      - name: Install oc CLI
+        run: |
+          echo "Downloading oc client..."
+          curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/oc/latest/linux/oc.tar.gz
+          tar -xzf oc.tar.gz oc
+          chmod +x oc
+          sudo mv oc /usr/local/bin/
+          oc version
+
+      # 3. Log in to your OpenShift cluster and switch to your target project.
+      - name: Login to OpenShift
+        env:
+          OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+        run: |
+          oc login $OPENSHIFT_SERVER --token=$OPENSHIFT_TOKEN
+          oc project deepak.agrawalmsoe-dev
+
+      # 4. Create a BuildConfig for a binary build (if it does not already exist).
+      - name: Create BuildConfig for Flask App (if not exists)
+        run: |
+          if oc get bc flask-app > /dev/null 2>&1; then
+            echo "BuildConfig 'flask-app' already exists."
+          else
+            echo "Creating BuildConfig for 'flask-app' using binary Docker build..."
+            oc new-build --binary --strategy=docker --name=flask-app
+          fi
+
+      # 5. Trigger the build using the repository contents.
+      - name: Start OpenShift Build for Flask App
+        run: |
+          oc start-build flask-app --from-dir=. --follow
+
+      # 6. Deploy (or update) the application in OpenShift.
+      - name: Deploy to OpenShift
+        run: |
+          # If a DeploymentConfig already exists, trigger a rollout.
+          if oc get dc flask-app > /dev/null 2>&1; then
+            echo "DeploymentConfig 'flask-app' exists. Triggering a new rollout..."
+            oc rollout latest dc/flask-app
+          else
+            echo "Creating a new application from the built image..."
+            oc new-app flask-app --name=flask-app
+          fi
+
+          # Expose the service by creating a route if it does not already exist.
+          if oc get route flask-app > /dev/null 2>&1; then
+            echo "Route for 'flask-app' already exists."
+          else
+            oc expose svc flask-app
+          fi
