@@ -1,0 +1,232 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: openshift-flask-app-prometheus
+  namespace: monitoring
+spec:
+  serviceAccountName: prometheus
+  serviceMonitorSelector: {}
+  resources:
+    requests:
+      memory: 400Mi
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: openshift-flask-app-servicemonitor
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: openshift-flask-app
+  endpoints:
+    - port: web
+      interval: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: openshift-flask-app-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: resource-alerts
+      rules:
+        - alert: HighCPUUsage
+          expr: sum(rate(container_cpu_usage_seconds_total{namespace="openshift-flask-app"}[5m])) > 80
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High CPU usage detected"
+            description: "CPU usage exceeded 80% for more than 1 minute."
+        - alert: HighMemoryUsage
+          expr: sum(container_memory_usage_bytes{namespace="openshift-flask-app"}) > 8000000000
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High Memory usage detected"
+            description: "Memory usage exceeded 8GB."
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  ports:
+    - name: web
+      port: 3000
+      targetPort: 3000
+  selector:
+    app: grafana
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: openshift-flask-app-hpa
+  namespace: openshift-flask-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: openshift-flask-app-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: anomaly-detection-job
+  namespace: monitoring
+spec:
+  schedule: "*/30 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: anomaly-detector
+              image: python:3.9
+              command: ["python", "-u", "-c"]
+              args:
+                - |
+                  import time, random
+                  while True:
+                      metric = random.uniform(50, 100)
+                      if metric > 90:
+                          print("Anomaly detected: High resource usage")
+                      time.sleep(5)
+          restartPolicy: OnFailure
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd
+  namespace: logging
+spec:
+  selector:
+    matchLabels:
+      app: fluentd
+  template:
+    metadata:
+      labels:
+        app: fluentd
+    spec:
+      containers:
+        - name: fluentd
+          image: fluent/fluentd-kubernetes-daemonset:v1.14
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: predictive-scaling-job
+  namespace: monitoring
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: predictive-scaler
+              image: python:3.9
+              command: ["python", "-u", "-c"]
+              args:
+                - |
+                  import time, random
+                  while True:
+                      predicted_load = random.uniform(50, 100)
+                      print(f"Predicted load: {predicted_load}%")
+                      if predicted_load > 85:
+                          print("Scaling up resources...")
+                      elif predicted_load < 40:
+                          print("Scaling down resources...")
+                      time.sleep(5)
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-config
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "title": "openshift-flask-app Monitoring",
+        "panels": [
+          {
+            "type": "graph",
+            "title": "CPU Usage",
+            "targets": [
+              { "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"openshift-flask-app\"}[5m]))", "legendFormat": "CPU" }
+            ]
+          },
+          {
+            "type": "graph",
+            "title": "Memory Usage",
+            "targets": [
+              { "expr": "sum(container_memory_usage_bytes{namespace=\"openshift-flask-app\"})", "legendFormat": "Memory" }
+            ]
+          },
+          {
+            "type": "table",
+            "title": "Anomalies Detected",
+            "targets": [
+              { "expr": "count_over_time(logs{namespace=\"monitoring\"}[1h])", "legendFormat": "Anomalies" }
+            ]
+          }
+        ]
+      }
+    }
