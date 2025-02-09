@@ -30,7 +30,7 @@ jobs:
           OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
         run: |
           oc login $OPENSHIFT_SERVER --token=$OPENSHIFT_TOKEN
-          oc project deepak.agrawalmsoe-dev
+          oc project deepakagrawalmsoe-dev
 
       # 4. Create a BuildConfig for a binary build (if it does not already exist).
       - name: Create BuildConfig for Flask App (if not exists)
