@@ -21,7 +21,7 @@ spec:
           # OpenShift will update this ImageStream tag when a new build is triggered.
           image: flask-app:latest
           #image: image-registry.openshift-image-registry.svc:5000/deepakagrawalmsoe-dev/flask-app@sha256:8d0f7bcd01a36d2f12c232a15ae3aa7e0f405487d362b771abf4acb0852bbe59
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
               name: http      # For application traffic.
