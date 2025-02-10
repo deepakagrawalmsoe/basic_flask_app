@@ -9,7 +9,7 @@ REQUEST_COUNT = Counter('request_count', 'App Request Count')
 @app.route('/')
 def hello():
     REQUEST_COUNT.inc()
-    return "Hello from Flask!"
+    return "Hello there from Flask!"
 
 # Create a metrics endpoint
 metrics_app = make_wsgi_app()
@@ -22,4 +22,3 @@ app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))  # Use OpenShift's port
     app.run(host="0.0.0.0", port=port)
-
