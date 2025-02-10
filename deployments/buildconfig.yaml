@@ -1,0 +1,22 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: flask-app
+  namespace: deepakagrawalmsoe-dev
+spec:
+  runPolicy: Serial
+  source:
+    # This build configuration uses a binary build.
+    # You will provide the source code (or binary archive) during the build trigger.
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy: {}
+  output:
+    to:
+      # The built image will be stored in an ImageStream tag.
+      kind: ImageStreamTag
+      name: flask-app:latest
+  triggers:
+    # Trigger a rebuild on changes to the BuildConfig.
+    - type: ConfigChange
