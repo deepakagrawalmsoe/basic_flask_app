@@ -9,7 +9,7 @@ app = Flask(__name__)
 @app.route('/')
 def hello():
 #    REQUEST_COUNT.inc()
-    return "Hello there from Flask!"
+    return "Hello there from Flask!!!"
 
 # Create a metrics endpoint
 metrics_app = make_wsgi_app()
