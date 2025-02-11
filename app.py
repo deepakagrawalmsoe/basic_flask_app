@@ -1,14 +1,14 @@
 import os
 from flask import Flask
-from prometheus_client import make_wsgi_app, Counter
+from prometheus_client import make_wsgi_app  #, Counter
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 app = Flask(__name__)
-REQUEST_COUNT = Counter('request_count', 'App Request Count')
+#REQUEST_COUNT = Counter('request_count', 'App Request Count')
 
 @app.route('/')
 def hello():
-    REQUEST_COUNT.inc()
+#    REQUEST_COUNT.inc()
     return "Hello there from Flask!"
 
 # Create a metrics endpoint
