@@ -9,12 +9,12 @@ REQUEST_COUNT = Counter('request_count', 'App Request Count')
 @app.route('/')
 def hello():
     REQUEST_COUNT.inc()
-    return "Hi there from Flask!"
+    return "Hello from Flask!"
 
-## Create a metrics endpoint
+# Create a metrics endpoint
 metrics_app = make_wsgi_app()
 
-## Combine the Flask app and the metrics endpoint
+# Combine the Flask app and the metrics endpoint
 app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
     '/metrics': metrics_app
 })
